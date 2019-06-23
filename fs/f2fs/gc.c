@@ -47,7 +47,6 @@ static int gc_thread_func(void *data)
 {
 	struct f2fs_sb_info *sbi = data;
 	struct f2fs_gc_kthread *gc_th = sbi->gc_thread;
-	struct discard_cmd_control *dcc = SM_I(sbi)->dcc_info;
 	wait_queue_head_t *wq = &sbi->gc_thread->gc_wait_queue_head;
 	unsigned int wait_ms = gc_th->min_sleep_time;
 	bool force_gc;
@@ -140,15 +139,12 @@ do_gc:
 
 		/* if return value is not zero, no victim was selected */
 		if (f2fs_gc(sbi, force_gc || test_opt(sbi, FORCE_FG_GC), true, NULL_SEGNO)) {
-			/* also wait until all invalid blocks are discarded */
-			if (dcc->undiscard_blks == 0) {
-				wait_ms = gc_th->no_gc_sleep_time;
-				gc_set_wakelock(sbi, gc_th, false);
-				sbi->gc_mode = GC_NORMAL;
-				f2fs_msg(sbi->sb, KERN_INFO,
-					"No more GC victim found, "
-					"sleeping for %u ms", wait_ms);
-			}
+			wait_ms = gc_th->no_gc_sleep_time;
+			gc_set_wakelock(sbi, gc_th, false);
+			sbi->gc_mode = GC_NORMAL;
+			f2fs_msg(sbi->sb, KERN_INFO,
+				"No more GC victim found, "
+				"sleeping for %u ms", wait_ms);
 		}
 
 		trace_f2fs_background_gc(sbi->sb, wait_ms,
@@ -768,7 +764,7 @@ block_t f2fs_start_bidx_of_node(unsigned int node_ofs, struct inode *inode)
 		int dec = (node_ofs - indirect_blks - 3) / (NIDS_PER_BLOCK + 1);
 		bidx = node_ofs - 5 - dec;
 	}
-	return bidx * ADDRS_PER_BLOCK + ADDRS_PER_INODE(inode);
+	return bidx * ADDRS_PER_BLOCK(inode) + ADDRS_PER_INODE(inode);
 }
 
 static bool is_alive(struct f2fs_sb_info *sbi, struct f2fs_summary *sum,
@@ -1356,6 +1352,7 @@ static int do_garbage_collect(struct f2fs_sb_info *sbi,
 				"type [%d, %d] in SSA and SIT",
 				segno, type, GET_SUM_TYPE((&sum->footer)));
 			set_sbi_flag(sbi, SBI_NEED_FSCK);
+			f2fs_stop_checkpoint(sbi, false);
 			goto skip;
 		}
 
@@ -1527,7 +1524,7 @@ void f2fs_build_gc_manager(struct f2fs_sb_info *sbi)
 	sbi->gc_pin_file_threshold = DEF_GC_FAILED_PINNED_FILES;
 
 	/* give warm/cold data area from slower device */
-	if (sbi->s_ndevs && !__is_large_section(sbi))
+	if (f2fs_is_multi_device(sbi) && !__is_large_section(sbi))
 		SIT_I(sbi)->last_victim[ALLOC_NEXT] =
 				GET_SEGNO(sbi, FDEV(0).end_blk) + 1;
 }
