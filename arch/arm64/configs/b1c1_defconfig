@@ -672,7 +672,7 @@ CONFIG_QMI_ENCDEC=y
 #
 # Custom special additions
 #
-CONFIG_LOCALVERSION="-custom-pixel3-q"
+CONFIG_LOCALVERSION="-SoakingWet-pixel3-Q"
 # CONFIG_LOCALVERSION_AUTO is not set
 CONFIG_QCA_CLD_WLAN=y
 CONFIG_QCACLD_WLAN_LFR3=y
